@@ -74,6 +74,13 @@ async def betray_check(interaction: discord.Interaction):
         f"**{count} betray**\n\n"
         f"最近の罪：\n\n{history_text}"
     )
+import threading
+from http.server import SimpleHTTPRequestHandler, HTTPServer
 
+def run_web():
+    server = HTTPServer(("0.0.0.0", 10000), SimpleHTTPRequestHandler)
+    server.serve_forever()
+
+threading.Thread(target=run_web).start()
 
 client.run(TOKEN)
