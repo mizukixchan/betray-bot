@@ -7,13 +7,11 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-TARGET_USER_ID = 393001269746335745
 TARGET_NAME = "裏切り対象"
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 intents = discord.Intents.default()
-
 client = discord.Client(intents=intents)
 tree = app_commands.CommandTree(client)
 
