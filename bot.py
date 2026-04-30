@@ -1,120 +1,71 @@
+import os
 import discord
 from discord import app_commands
-from discord.ext import commands
-import json
-import os
-from datetime import datetime
-
-# =========================
-# 設定
-# =========================
+from supabase import create_client
 
 TOKEN = os.getenv("DISCORD_TOKEN")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
-# 固定対象のユーザーID
 TARGET_USER_ID = 393001269746335745
+TARGET_NAME = "裏切り対象"
 
-# 表示名（好きに変えてOK）
-TARGET_NAME = "ハヤ様"
-
-DATA_FILE = "betray_data.json"
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
-
-
-# =========================
-# データ読み書き
-# =========================
-
-def load_data():
-    if not os.path.exists(DATA_FILE):
-        return {
-            "count": 0,
-            "history": []
-        }
-
-    with open(DATA_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+client = discord.Client(intents=intents)
+tree = app_commands.CommandTree(client)
 
 
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-
-
-# =========================
-# 起動時
-# =========================
-
-@bot.event
+@client.event
 async def on_ready():
-    print(f"ログイン完了: {bot.user}")
-
-    try:
-        synced = await bot.tree.sync()
-        print(f"コマンド同期完了: {len(synced)}個")
-    except Exception as e:
-        print(e)
+    await tree.sync()
+    print(f"ログイン完了: {client.user}")
 
 
-# =========================
-# /裏切り追加
-# =========================
-
-@bot.tree.command(name="裏切り追加", description="裏切り回数を追加します")
-@app_commands.describe(
-    reason="裏切りの理由"
-)
-async def betray_add(
-    interaction: discord.Interaction,
-    reason: str
-):
-    data = load_data()
-
-    data["count"] += 1
-
-    history_entry = {
+@tree.command(name="裏切り追加", description="裏切り回数を追加します")
+@app_commands.describe(reason="裏切りの理由")
+async def betray_add(interaction: discord.Interaction, reason: str):
+    supabase.table("betray_logs").insert({
         "reason": reason,
-        "reporter": interaction.user.display_name,
-        "date": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    }
+        "reporter": interaction.user.display_name
+    }).execute()
 
-    data["history"].append(history_entry)
-
-    save_data(data)
+    result = supabase.table("betray_logs").select("id").execute()
+    count = len(result.data)
 
     await interaction.response.send_message(
         f"⚠ 裏切り検知 ⚠\n\n"
         f"{TARGET_NAME} の裏切り回数が増加しました。\n"
-        f"現在：**{data['count']} betray**\n\n"
+        f"現在：**{count} betray**\n\n"
         f"最新の罪：\n"
         f"「{reason}」\n\n"
         f"告発者：{interaction.user.mention}"
     )
 
 
-# =========================
-# /裏切り確認
-# =========================
-
-@bot.tree.command(name="裏切り確認", description="裏切り回数を確認します")
+@tree.command(name="裏切り確認", description="裏切り回数を確認します")
 async def betray_check(interaction: discord.Interaction):
-    data = load_data()
+    result = (
+        supabase.table("betray_logs")
+        .select("reason, reporter, created_at")
+        .order("created_at", desc=True)
+        .execute()
+    )
 
-    history = data["history"][-5:]  # 最新5件
+    logs = result.data
+    count = len(logs)
 
-    history_text = ""
+    recent_logs = logs[:5]
 
-    if history:
-        for i, item in enumerate(reversed(history), 1):
+    if recent_logs:
+        history_text = ""
+        for i, item in enumerate(recent_logs, 1):
             history_text += (
                 f"{i}. {item['reason']}\n"
                 f"　告発者：{item['reporter']}\n"
-                f"　日時：{item['date']}\n\n"
+                f"　日時：{item['created_at']}\n\n"
             )
     else:
         history_text = "履歴なし"
@@ -122,13 +73,9 @@ async def betray_check(interaction: discord.Interaction):
     await interaction.response.send_message(
         f"⚠ 裏切り記録照会 ⚠\n\n"
         f"{TARGET_NAME} の現在の裏切り回数："
-        f"**{data['count']} betray**\n\n"
+        f"**{count} betray**\n\n"
         f"最近の罪：\n\n{history_text}"
     )
 
 
-# =========================
-# 起動
-# =========================
-
-bot.run(TOKEN)
+client.run(TOKEN)
